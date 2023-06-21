@@ -24,6 +24,8 @@ class Bot {
 
     private roundsRemaining = 2500;
 
+    private tieCommulation = 1;
+
     private extractType(stringRepresentation : string) : PlayTypes {
         switch (stringRepresentation) {
             case 'D': return PlayTypes.dynamite
@@ -35,16 +37,26 @@ class Bot {
     }
 
     private updateRemainingDynamite(gamestate: Gamestate) : void {
-        let dynamiteCount = 100;
+        if(gamestate.rounds.length == 0) {
+            return;
+        }
         let lastRound = gamestate.rounds[gamestate.rounds.length - 1]
         if (this.extractType(lastRound[PlayerType.me]) === PlayTypes.dynamite) this.me.dynamiteAmount -= 1
         if (this.extractType(lastRound[PlayerType.them]) === PlayTypes.dynamite) this.opponent.dynamiteAmount -= 1
     }
 
     private updateScore(gamestate: Gamestate) : void {
+        if(gamestate.rounds.length == 0) {
+            return;
+        }
+
         let lastRound = gamestate.rounds[gamestate.rounds.length - 1]
         let botPlayed = this.extractType(lastRound[PlayerType.me])
         let opponentPlayed = this.extractType(lastRound[PlayerType.them])
+
+        if(botPlayed === opponentPlayed) {
+            this.tieCommulation += 1
+        }
 
         switch (opponentPlayed) {
             case PlayTypes.dynamite:
@@ -52,77 +64,99 @@ class Bot {
                     case PlayTypes.dynamite:
                         break
                     case PlayTypes.rock:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                     case PlayTypes.paper:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                     case PlayTypes.scissors:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                     case PlayTypes.waterBomb:
-                        this.me.score += 1
+                        this.me.score += this.tieCommulation
                         break
                 }
                 break;
             case PlayTypes.rock:
                 switch (botPlayed) {
                     case PlayTypes.dynamite:
-                        this.me.score += 1
+                        this.me.score += this.tieCommulation
                         break
                     case PlayTypes.rock:
                         break
                     case PlayTypes.paper:
-                        this.me.score += 1
+                        this.me.score += this.tieCommulation
                         break
                     case PlayTypes.scissors:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                     case PlayTypes.waterBomb:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                 }
                 break;
             case PlayTypes.paper:
                 switch (botPlayed) {
                     case PlayTypes.dynamite:
-                        this.me.score += 1
+                        this.me.score += this.tieCommulation
                         break
                     case PlayTypes.rock:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                     case PlayTypes.paper:
                         break
                     case PlayTypes.scissors:
-                        this.me.score += 1
+                        this.me.score += this.tieCommulation
                         break
                     case PlayTypes.waterBomb:
-                        this.opponent.score += 1
+                        this.opponent.score += this.tieCommulation
                         break
                 }
                 break;
             case PlayTypes.scissors:
                 switch (botPlayed) {
                     case PlayTypes.dynamite:
+                        this.me.score += this.tieCommulation
+                        break
                     case PlayTypes.rock:
+                        this.me.score += this.tieCommulation
+                        break
                     case PlayTypes.paper:
+                        this.opponent.score += this.tieCommulation
+                        break
                     case PlayTypes.scissors:
+                        break
                     case PlayTypes.waterBomb:
+                        this.opponent.score += this.tieCommulation
+                        break
                 }
                 break;
             case PlayTypes.waterBomb:
                 switch (botPlayed) {
                     case PlayTypes.dynamite:
+                        this.opponent.score += this.tieCommulation
+                        break
                     case PlayTypes.rock:
+                        this.me.score += this.tieCommulation
+                        break
                     case PlayTypes.paper:
+                        this.me.score += this.tieCommulation
+                        break
                     case PlayTypes.scissors:
+                        this.me.score += this.tieCommulation
+                        break
                     case PlayTypes.waterBomb:
+                        break
                 }
                 break;
         }
+
+        if(botPlayed !== opponentPlayed) {
+            this.tieCommulation = 1
+        }
     }
 
-    private giveRandomDecision(gamestate : Gamestate) : BotSelection {
+    private giveRandomDecision() : BotSelection {
         let dice = Math.floor(Math.random()*3);
 
         switch (dice) {
@@ -132,24 +166,33 @@ class Bot {
         }
     }
 
-    private decideWithOpponentDynamite() : BotSelection {
-        
+    private decideWithDynamite() : BotSelection {
+        if (this.estimateRemainingRounds())
     }
 
-    private decideWithoutOpponentDynamite() : BotSelection {
-        if () {
-
-        }
-    }
-
-    private calculateScore(gamestate: Gamestate) : number[] {
-        let myScore = 0;
-        let theirScore = 0;
-        gamestate.rounds.map((round) => {})
+    private decideWithoutDynamite() : BotSelection {
+        return null
     }
 
     private estimateRemainingRounds(gamestate: Gamestate) : number {
         let elapsedRounds = gamestate.rounds.length
+
+        let scores = [this.opponent.score, this.me.score].sort()
+
+        let scoreRate = scores[0]/scores[1]
+        
+        let remainingToWin = 1000 - scores[1]
+
+        let tiesRate = (elapsedRounds - (scores[0] + scores[1])) / elapsedRounds
+
+        let initialEstimate = remainingToWin + remainingToWin * scoreRate
+
+        initialEstimate = Math.floor(initialEstimate * (1 + tiesRate))
+
+        if(initialEstimate > 2500 - elapsedRounds) {
+            return 2500 - elapsedRounds
+        }
+        return initialEstimate
     }
 
     public makeMove(gamestate: Gamestate): BotSelection {
@@ -157,10 +200,10 @@ class Bot {
         this.updateRemainingDynamite(gamestate)
         this.updateScore(gamestate)
 
-        if(this.opponentDynamite > 0) 
-            return this.decideWithOpponentDynamite();
+        if(this.me.dynamiteAmount > 0) 
+            return this.decideWithDynamite();
         else 
-            return this.decideWithoutOpponentDynamite();
+            return this.decideWithoutDynamite();
     }
 }
 
