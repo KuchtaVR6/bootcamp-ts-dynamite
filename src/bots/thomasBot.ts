@@ -51,7 +51,10 @@ class Bot {
     private randomizeTheDecisionAfterRounds = Math.floor(Math.random() * 20) + 10
     private previousReasons: FullReason[] = [];
 
-    private BayesChainingInstance = new BayesChaining;
+    private bayesChainingInstance = new BayesChaining;
+
+    private dynamiteProbBoostLastsFor = 3
+    private currentdynamiteProbBoost = 0
 
     private extractType(stringRepresentation: string): PlayTypes {
         switch (stringRepresentation) {
@@ -192,17 +195,28 @@ class Bot {
 
     private giveRandomDecisionWithSpecials(): BotSelection {
         let dice;
+
+        let usedProb = 1 / 16;
+
+        if (this.currentdynamiteProbBoost > 0) {
+            usedProb = 1 / 2
+        } else {
+            if(Math.random() * 10 > 9) {
+                this.currentdynamiteProbBoost = this.dynamiteProbBoostLastsFor
+            }
+        }
+
         if (this.me.dynamiteAmount > 0) {
             if (this.opponent.dynamiteAmount > 0) {
-                dice = Math.floor(Math.random() * 5);
+                dice = Math.floor(Math.random() * (4 + 1 / 16 + usedProb) + 1 / 16);
             }
             else {
-                dice = Math.floor(Math.random() * 4)
+                dice = Math.floor(Math.random() * (4 - 1 / 16) + 1 / 16)
             }
         }
         else {
             if (this.opponent.dynamiteAmount > 0) {
-                dice = Math.floor(Math.random() * 4) + 1
+                dice = Math.floor(Math.random() * (3 + usedProb)) + 1
             }
             else {
                 dice = Math.floor(Math.random() * 3) + 1
@@ -210,7 +224,7 @@ class Bot {
         }
 
         switch (dice) {
-            case 0: return "D";
+            case 0: {this.currentdynamiteProbBoost -= 1; return "D";}
             case 1: return "R";
             case 2: return "P";
             case 3: return "S";
@@ -283,47 +297,49 @@ class Bot {
         this.updateScore(gamestate)
         this.estimateRemainingRounds(gamestate)
 
-        let bestPredition : PredictionOutput = {
-            choice: 'R',
-            probability: 0,
-            relativeScore: 0,
-            sequenceLength: 0,
-        };
-
         if (this.randomizeTheDecisionAfterRounds > 0) {
             this.randomizeTheDecisionAfterRounds -= 1
         }
         else {
             this.addReason(Reason.randomized)
-            this.randomizeTheDecisionAfterRounds = Math.floor(Math.random() * 20) + 10
+            this.randomizeTheDecisionAfterRounds = Math.floor(Math.random() * 3) + 1
             return this.giveRandomDecisionWithSpecials();
         }
 
-        for (let i = 2; i < 10; i++) {
-            let currentBestPrediciton = this.BayesChainingInstance.predict(gamestate, i).sort((a, b) => {
-                if (a.probability > b.probability) {
-                    return -1
-                }
-                else if (a.probability == b.probability) {
-                    return 0
-                }
-                else {
-                    return 1
-                }
-            })[0]
+        if (gamestate.rounds.length > 200) {
 
-            if (bestPredition.relativeScore < currentBestPrediciton.relativeScore) {
-                bestPredition = currentBestPrediciton
+            let bestPredition: PredictionOutput = {
+                choice: 'R',
+                probability: 0,
+                relativeScore: 0,
+                sequenceLength: 0,
+            };
+
+            for (let i = 2; i < 10; i++) {
+                let currentBestPrediciton = this.bayesChainingInstance.predict(gamestate, i).sort((a, b) => {
+                    if (a.probability > b.probability) {
+                        return -1
+                    }
+                    else if (a.probability == b.probability) {
+                        return 0
+                    }
+                    else {
+                        return 1
+                    }
+                })[0]
+
+                if (bestPredition.relativeScore < currentBestPrediciton.relativeScore) {
+                    bestPredition = currentBestPrediciton
+                }
             }
-        }
 
-        if (bestPredition.relativeScore > 0.6) {
-            switch (bestPredition.choice) {
-                case 'R': return 'P'
-                case 'P': return 'S'
-                case 'S': return 'R'
-                case 'D': return 'W'
-                case 'W': return 'S'
+            if (bestPredition.relativeScore > 0.8) {
+                switch (bestPredition.choice) {
+                    case 'R': return 'P'
+                    case 'P': return 'S'
+                    case 'S': return 'R'
+                    case 'W': return 'S'
+                }
             }
         }
 
@@ -338,7 +354,7 @@ type PredictionOutput = {
     probability: number
     choice: BotSelection
     sequenceLength: number
-    relativeScore : number
+    relativeScore: number
 }
 
 class BayesChaining {
@@ -366,12 +382,6 @@ class BayesChaining {
     private probabilyOf(gamestate: Gamestate, sequence: BotSelection[]) {
         if (gamestate.rounds.length <= 0) return 0;
         return this.countSequences(gamestate, sequence) / gamestate.rounds.length
-    }
-
-    private conditionalProbabilty(gamestate: Gamestate, sequence: BotSelection[], given: BotSelection[]) {
-        let numberOfGiven = this.countSequences(gamestate, given)
-        if (numberOfGiven <= 0) return 0
-        return this.countSequences(gamestate, sequence) / numberOfGiven
     }
 
     private conditionalProbabiltyGiven(gamestate: Gamestate, UnionSequence: BotSelection[], given: number) {
@@ -402,10 +412,10 @@ class BayesChaining {
         if (gamestate.rounds.length - 1 - sequenceLength < 0)
             return [
                 { probability: 0, choice: 'D', sequenceLength: 0, relativeScore: 0 },
-                { probability: 0, choice: 'R', sequenceLength: 0, relativeScore: 0  },
-                { probability: 0, choice: 'P', sequenceLength: 0, relativeScore: 0  },
-                { probability: 0, choice: 'S', sequenceLength: 0, relativeScore: 0  },
-                { probability: 0, choice: 'W', sequenceLength: 0, relativeScore: 0  },
+                { probability: 0, choice: 'R', sequenceLength: 0, relativeScore: 0 },
+                { probability: 0, choice: 'P', sequenceLength: 0, relativeScore: 0 },
+                { probability: 0, choice: 'S', sequenceLength: 0, relativeScore: 0 },
+                { probability: 0, choice: 'W', sequenceLength: 0, relativeScore: 0 },
             ]
         let lastVector: BotSelection[] = []
         for (let index = gamestate.rounds.length - sequenceLength; index < (gamestate.rounds.length); index++) {
@@ -426,7 +436,7 @@ class BayesChaining {
             probabilities.push({
                 probability: calculatedProb,
                 choice: vector[vector.length - 1],
-                relativeScore: calculatedProb + sequenceLength*0.1,
+                relativeScore: calculatedProb + sequenceLength * 0.1,
                 sequenceLength: sequenceLength
             })
         })
