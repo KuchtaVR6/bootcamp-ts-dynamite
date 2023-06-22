@@ -318,7 +318,6 @@ class Bot {
         }
 
         if (bestPredition.relativeScore > 0.6) {
-            console.log("Best prediction: ", bestPredition)
             switch (bestPredition.choice) {
                 case 'R': return 'P'
                 case 'P': return 'S'
